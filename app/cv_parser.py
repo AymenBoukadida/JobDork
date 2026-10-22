@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import re
+import unicodedata
 from dataclasses import dataclass
 
 KNOWN_SKILLS: frozenset[str] = frozenset(
@@ -80,6 +81,28 @@ TITLE_PATTERNS = re.compile(
     r"ux designer|ui designer|designer|"
     r"technical lead|engineering manager|architect"
     r")\b",
+    re.IGNORECASE,
+)
+
+ROLE_KEYWORDS = re.compile(
+    r"\b("
+    r"engineer|engineering|developer|programmer|manager|designer|analyst|"
+    r"scientist|architect|consultant|specialist|administrator|technician|"
+    r"recruiter|accountant|marketing|writer|editor|teacher|nurse|attorney|"
+    r"advisor|assistant|officer|coordinator|operator|devops|devsecops|sre|"
+    r"scrum|backend|frontend|full[\s-]?stack|lead|staff|principal|junior|"
+    r"senior|intern|freelance|qa|ingenieur|developpeur|technicien|"
+    r"comptable|stagiaire"
+    r")\b",
+    re.IGNORECASE,
+)
+
+SECTION_HEADER = re.compile(
+    r"^(summary|profile|about(?:\s+me)?|objective|experience|work\s+experience|"
+    r"professional\s+experience|education|skills?|technical\s+skills|"
+    r"projects?|certifications?|languages|interests|contact|references|"
+    r"achievements?|awards?|publications?|volunteering|"
+    r"exp[ée]rience|formation|comp[ée]tences|langues|projets|loisirs)$",
     re.IGNORECASE,
 )
 
@@ -204,22 +227,30 @@ def _normalize_text(text: str) -> str:
     return text.strip()
 
 
+def _strip_accents(value: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", value) if not unicodedata.combining(c)
+    )
+
+
 def _extract_title(text: str) -> str:
     head = text[:2500]
     match = TITLE_PATTERNS.search(head)
     if match:
         return _title_case(match.group(1))
 
-    for line in text.split("\n")[:12]:
-        line = line.strip()
-        if not line or len(line) > 80:
+    for raw in text.split("\n")[:12]:
+        line = raw.strip().rstrip(":")
+        if not line or len(line) > 60 or len(line.split()) > 6:
             continue
-        if "@" in line or re.search(r"\d{3}[-.\s]?\d", line):
+        if "@" in line or re.search(r"\d", line):
             continue
         if line.lower() in {"curriculum vitae", "resume", "cv"}:
             continue
-        if len(line.split()) <= 6:
-            return line
+        if SECTION_HEADER.match(line):
+            continue
+        if ROLE_KEYWORDS.search(_strip_accents(line)):
+            return _title_case(line)
     return ""
 
 
