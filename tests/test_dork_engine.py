@@ -130,6 +130,31 @@ def test_parse_cv_skips_section_headers_in_fallback():
     assert result.title == ""
 
 
+def test_parse_cv_does_not_use_skills_as_location():
+    cv = (
+        "AYMEN BOUKADIDA\n"
+        "Penetration Tester\n"
+        "Tunis, Tunisia\n"
+        "aymen@example.com\n"
+        "SKILLS\n"
+        "Metasploit, Burp Suite, Mimikatz, SSH, Nmap, Wireshark\n"
+    )
+    result = parse_cv_text(cv)
+    assert result.location == "Tunis, Tunisia"
+
+
+def test_parse_cv_location_rejects_non_country_uppercase():
+    cv = "Jane Smith\nSoftware Engineer\nWindows, SSH\nAzure, AWS\nLondon, UK\n"
+    result = parse_cv_text(cv)
+    assert result.location == "London, UK"
+
+
+def test_parse_cv_location_explicit_line_wins():
+    cv = "Jane Smith\nSoftware Engineer\nLocation: Berlin, Germany\nLondon, UK\n"
+    result = parse_cv_text(cv)
+    assert result.location == "Berlin, Germany"
+
+
 def test_keyword_mode_or_in_skills():
     result = generate_dorks(
         SearchParams(title="Engineer", skills=["Python", "Go"], keyword_mode="or")

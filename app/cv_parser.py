@@ -77,6 +77,7 @@ TITLE_PATTERNS = re.compile(
     r"devops engineer|site reliability engineer|sre|platform engineer|"
     r"cloud engineer|security engineer|qa engineer|test engineer|"
     r"mobile developer|ios developer|android developer|"
+    r"penetration tester|pentester|security analyst|soc analyst|"
     r"product manager|project manager|business analyst|"
     r"ux designer|ui designer|designer|"
     r"technical lead|engineering manager|architect"
@@ -91,7 +92,8 @@ ROLE_KEYWORDS = re.compile(
     r"recruiter|accountant|marketing|writer|editor|teacher|nurse|attorney|"
     r"advisor|assistant|officer|coordinator|operator|devops|devsecops|sre|"
     r"scrum|backend|frontend|full[\s-]?stack|lead|staff|principal|junior|"
-    r"senior|intern|freelance|qa|ingenieur|developpeur|technicien|"
+    r"senior|intern|freelance|qa|tester|pentest(?:er)?|auditor|"
+    r"ingenieur|developpeur|technicien|"
     r"comptable|stagiaire"
     r")\b",
     re.IGNORECASE,
@@ -104,6 +106,64 @@ SECTION_HEADER = re.compile(
     r"achievements?|awards?|publications?|volunteering|"
     r"exp[ée]rience|formation|comp[ée]tences|langues|projets|loisirs)$",
     re.IGNORECASE,
+)
+
+KNOWN_COUNTRIES = frozenset(
+    {
+        "tunisia",
+        "tunisie",
+        "france",
+        "canada",
+        "germany",
+        "allemagne",
+        "united kingdom",
+        "united states",
+        "uk",
+        "usa",
+        "england",
+        "spain",
+        "espagne",
+        "italy",
+        "italie",
+        "belgium",
+        "belgique",
+        "switzerland",
+        "suisse",
+        "netherlands",
+        "luxembourg",
+        "portugal",
+        "ireland",
+        "irlande",
+        "poland",
+        "pologne",
+        "romania",
+        "roumanie",
+        "morocco",
+        "maroc",
+        "algeria",
+        "algerie",
+        "egypt",
+        "egypte",
+        "uae",
+        "emirates",
+        "qatar",
+        "saudi arabia",
+        "turkey",
+        "turquie",
+        "greece",
+        "grece",
+        "japan",
+        "australia",
+        "brazil",
+        "bresil",
+        "india",
+        "china",
+    }
+)
+
+CITY_COUNTRY = re.compile(
+    r"\b([A-ZÀ-Þ][a-zà-öø-ÿ'’-]+(?:[ \t][A-ZÀ-Þ][a-zà-öø-ÿ'’-]+)?)[ \t]*,[ \t]*"
+    r"([A-Za-zÀ-ÿ'’-]{2,20}(?:[ \t][A-Za-zÀ-ÿ'’-]+)?)"
 )
 
 EXPERIENCE_LEVEL_MAP = (
@@ -278,12 +338,13 @@ def _extract_location(text: str) -> str:
         if len(loc) < 60:
             return loc
 
-    city_country = re.search(
-        r"\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s*(?:UK|USA|US|United Kingdom|United States|[A-Z]{2,}))\b",
-        text[:2000],
-    )
-    if city_country:
-        return city_country.group(1)
+    for match in CITY_COUNTRY.finditer(text[:2000]):
+        words = match.group(2).strip().split()
+        for count in (2, 1):
+            if len(words) >= count:
+                candidate = " ".join(words[:count]).lower()
+                if candidate in KNOWN_COUNTRIES:
+                    return f"{match.group(1)}, {' '.join(words[:count])}"
     return ""
 
 
