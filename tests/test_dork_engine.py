@@ -164,6 +164,43 @@ def test_keyword_mode_or_in_skills():
     assert '"Python"' in sample
 
 
+def test_modes_are_case_insensitive_and_invalid_values_fall_back():
+    params = SearchParams(title="Engineer", keyword_mode="OR", title_mode="AND")
+    assert params.keyword_mode == "or"
+    assert params.title_mode == "and"
+
+    params = SearchParams(title="Engineer", keyword_mode="xor", title_mode="nope")
+    assert (params.keyword_mode, params.title_mode) == ("and", "or")
+
+
+def test_skills_are_deduplicated_and_capped():
+    params = SearchParams(
+        title="Engineer",
+        skills=["Python", " python ", "AWS", ""] + [f"skill{i}" for i in range(20)],
+    )
+    assert params.skills[:3] == ["Python", "AWS", "skill0"]
+    assert len(params.skills) == 12
+
+
+def test_exclude_terms_are_deduplicated():
+    params = SearchParams(title="Engineer", exclude_terms=["intern", " Intern ", ""])
+    assert params.exclude_terms == ["intern"]
+
+
+def test_ats_ids_are_normalized_and_deduplicated():
+    params = SearchParams(
+        title="Engineer", ats_platforms=["Lever", "lever", " Greenhouse "]
+    )
+    result = generate_dorks(params)
+    ats = next(c for c in result["categories"] if c["id"] == "ats")
+    assert [d["label"] for d in ats["dorks"]] == ["Lever", "Greenhouse"]
+
+
+def test_time_filter_is_normalized_or_ignored():
+    assert SearchParams(title="Engineer", time_filter="30D").time_filter == "30d"
+    assert SearchParams(title="Engineer", time_filter="1y").time_filter == ""
+
+
 def test_sanitize_quotes_in_title():
     result = generate_dorks(SearchParams(title='Software "Engineer"'))
     q = result["categories"][0]["dorks"][0]["query"]

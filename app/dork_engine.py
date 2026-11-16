@@ -28,7 +28,7 @@ from app.query_builder import (
     query_length_warning,
     sanitize_term,
 )
-from app.time_filters import time_filter_clause
+from app.time_filters import TIME_FILTERS, time_filter_clause
 
 TUNISIA_LOCATION_HINTS = (
     "tunisia",
@@ -60,6 +60,24 @@ class DorkQuery:
         return f"https://www.google.com/search?q={quote_plus(self.query)}"
 
 
+def _clean_values(
+    values: list[str] | None, *, limit: int, lowercase: bool = False
+) -> list[str]:
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for raw in values or []:
+        value = sanitize_term(raw)
+        if lowercase:
+            value = value.lower()
+        key = value.lower()
+        if value and key not in seen:
+            seen.add(key)
+            cleaned.append(value)
+            if len(cleaned) == limit:
+                break
+    return cleaned
+
+
 @dataclass
 class SearchParams:
     title: str = ""
@@ -81,15 +99,7 @@ class SearchParams:
         raw_titles = list(self.titles or [])
         if self.title:
             raw_titles.insert(0, self.title)
-        seen: set[str] = set()
-        cleaned: list[str] = []
-        for t in raw_titles:
-            s = sanitize_term(t)
-            key = s.lower()
-            if s and key not in seen:
-                seen.add(key)
-                cleaned.append(s)
-        self.titles = cleaned[:6]
+        self.titles = _clean_values(raw_titles, limit=6)
         self.title = self.titles[0] if self.titles else ""
 
         self.location = sanitize_term(self.location)
@@ -103,13 +113,18 @@ class SearchParams:
                 cleaned_domains.append(domain)
         self.company_domains = cleaned_domains[:5]
         self.experience = sanitize_term(self.experience)
-        self.skills = [
-            sanitize_term(s) for s in (self.skills or []) if sanitize_term(s)
-        ]
-        self.exclude_terms = [
-            sanitize_term(t) for t in (self.exclude_terms or []) if sanitize_term(t)
-        ]
+        self.skills = _clean_values(self.skills, limit=12)
+        self.exclude_terms = _clean_values(self.exclude_terms, limit=15)
+        if self.ats_platforms is not None:
+            self.ats_platforms = _clean_values(
+                self.ats_platforms, limit=20, lowercase=True
+            )
+        self.time_filter = sanitize_term(self.time_filter).lower()
+        if self.time_filter not in TIME_FILTERS:
+            self.time_filter = ""
         self.preset_id = sanitize_term(self.preset_id)
+        self.keyword_mode = sanitize_term(self.keyword_mode).lower()
+        self.title_mode = sanitize_term(self.title_mode).lower()
         if self.keyword_mode not in ("and", "or"):
             self.keyword_mode = "and"
         if self.title_mode not in ("and", "or"):
