@@ -13,6 +13,15 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+## Testing
+
+```bash
+.venv\Scripts\python.exe -m pytest -q
+node --test tests/frontend/payload.test.mjs
+```
+
+The frontend tests use Node's built-in test runner (Node 20+); there is no npm install step.
+
 
 ## Catching postings before the boards do
 
