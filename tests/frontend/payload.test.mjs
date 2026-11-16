@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  asHistoryList,
   buildPayload,
   formatRequestError,
   historyKey,
   normalizeHistoryEntry,
+  readJson,
+  requireArrayField,
   splitCommaList,
 } from "../../static/js/form-payload.js";
 
@@ -90,4 +93,112 @@ test("formatRequestError prefers API detail and explains server failures", () =>
     formatRequestError({ status: 0 }, {}),
     /reach the server|connection/i,
   );
+});
+
+test("formatRequestError renders FastAPI 422 detail arrays as readable text", () => {
+  const message = formatRequestError(
+    { status: 422 },
+    {
+      detail: [
+        { loc: ["body", "titles", 0], msg: "Input should be a valid string" },
+        { loc: ["body", "skills"], msg: "Too many skills" },
+        "plain detail",
+      ],
+    },
+  );
+  assert.equal(
+    message,
+    "titles.0: Input should be a valid string; skills: Too many skills; plain detail",
+  );
+  assert.doesNotMatch(message, /\[object Object\]/);
+});
+
+test("formatRequestError tolerates odd payload shapes", () => {
+  assert.equal(formatRequestError({ status: 422 }, { detail: [] }), "Request failed (422).");
+  assert.equal(
+    formatRequestError({ status: 400 }, { detail: { message: "Nested message" } }),
+    "Nested message",
+  );
+  assert.equal(formatRequestError(null, null), formatRequestError({ status: 0 }, {}));
+  assert.match(formatRequestError({ status: 422 }, "not an object"), /422/);
+});
+
+test("readJson returns parsed JSON and null for invalid bodies", async () => {
+  assert.deepEqual(await readJson({ json: async () => ({ ok: true }) }), { ok: true });
+  assert.equal(
+    await readJson({
+      json: async () => {
+        throw new SyntaxError("Unexpected token <");
+      },
+    }),
+    null,
+  );
+});
+
+test("requireArrayField returns arrays and rejects malformed payloads", () => {
+  const presets = [{ id: "data" }];
+  assert.equal(requireArrayField({ presets }, "presets", "preset list"), presets);
+  assert.throws(
+    () => requireArrayField({ presets: "nope" }, "presets", "preset list"),
+    /missing preset list/,
+  );
+  assert.throws(
+    () => requireArrayField(null, "presets", "preset list"),
+    /Unexpected response from the server/,
+  );
+});
+
+test("asHistoryList only accepts arrays", () => {
+  assert.deepEqual(asHistoryList([{ id: 1 }]), [{ id: 1 }]);
+  assert.deepEqual(asHistoryList("[]"), []);
+  assert.deepEqual(asHistoryList(null), []);
+  assert.deepEqual(asHistoryList({ length: 1 }), []);
+});
+
+test("history entries round-trip through the payload contract", () => {
+  const data = new FormData();
+  data.set("titles", "Data Engineer, Analytics Engineer");
+  data.set("location", "Tunis");
+  data.set("skills", "SQL, dbt");
+  data.set("exclude_terms", "intern");
+  data.set("company", "Stripe");
+  data.set("company_domains", "stripe.com");
+  data.set("experience", "mid level");
+  data.set("time_filter", "30d");
+  data.set("preset_id", "data");
+  data.set("keyword_mode", "or");
+  data.set("title_mode", "or");
+  data.set("remote", "on");
+
+  const payload = buildPayload(data, ["greenhouse", "lever"]);
+  const entry = normalizeHistoryEntry(payload);
+
+  assert.deepEqual(Object.keys(entry).sort(), Object.keys(payload).sort());
+  for (const field of [
+    "titles",
+    "location",
+    "skills",
+    "exclude_terms",
+    "company",
+    "company_domains",
+    "remote",
+    "experience",
+    "time_filter",
+    "preset_id",
+    "keyword_mode",
+    "title_mode",
+    "ats_platforms",
+  ]) {
+    assert.deepEqual(entry[field], payload[field], field);
+  }
+  assert.equal(historyKey(payload), historyKey(entry));
+});
+
+test("normalizeHistoryEntry trims list items and drops non-strings", () => {
+  const entry = normalizeHistoryEntry({
+    titles: ["  Engineer  ", "", 42, "Engineer"],
+    skills: [" Python ", null],
+  });
+  assert.deepEqual(entry.titles, ["Engineer", "Engineer"]);
+  assert.deepEqual(entry.skills, ["Python"]);
 });

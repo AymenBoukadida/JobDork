@@ -14,6 +14,7 @@ from app.career_pages import (
 from app.experience_filters import (
     experience_clause,
     experience_exclude_tokens,
+    normalize_experience,
     zero_experience_exclude_tokens,
     ZERO_EXP_POSITIVE,
 )
@@ -22,6 +23,7 @@ from app.query_builder import (
     assemble_query,
     combine_terms,
     google_quoted,
+    group_top_level_or,
     intitle_clause,
     join_query_parts,
     normalize_exclude_list,
@@ -94,11 +96,36 @@ class SearchParams:
     title_mode: str = "or"  # and | or (multiple job titles)
     time_filter: str = ""  # 24h, 7d, 30d, 90d, 180d
     preset_id: str = ""
+    notes: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self) -> None:
         raw_titles = list(self.titles or [])
         if self.title:
             raw_titles.insert(0, self.title)
+        raw_skills = list(self.skills or [])
+        raw_excludes = list(self.exclude_terms or [])
+        raw_domains = list(self.company_domains or [])
+
+        if len(raw_titles) > 6:
+            self.notes.append("Only the first 6 job titles are used.")
+        if len(raw_skills) > 12:
+            self.notes.append("Only the first 12 skills are used.")
+        if len(raw_excludes) > 15:
+            self.notes.append("Only the first 15 exclude terms are used.")
+        if len(raw_domains) > 5:
+            self.notes.append("Only the first 5 company domains are used.")
+        if any(
+            len(str(value).strip()) > 120
+            for value in [
+                *raw_titles,
+                *raw_skills,
+                *raw_excludes,
+                self.location,
+                self.company,
+            ]
+        ):
+            self.notes.append("Long text was shortened to 120 characters per term.")
+
         self.titles = _clean_values(raw_titles, limit=6)
         self.title = self.titles[0] if self.titles else ""
 
@@ -106,15 +133,15 @@ class SearchParams:
         self.company = sanitize_term(self.company)
         cleaned_domains: list[str] = []
         seen_domains: set[str] = set()
-        for raw in self.company_domains or []:
+        for raw in raw_domains:
             domain = sanitize_company_domain(raw)
             if domain and domain not in seen_domains:
                 seen_domains.add(domain)
                 cleaned_domains.append(domain)
         self.company_domains = cleaned_domains[:5]
-        self.experience = sanitize_term(self.experience)
-        self.skills = _clean_values(self.skills, limit=12)
-        self.exclude_terms = _clean_values(self.exclude_terms, limit=15)
+        self.experience = normalize_experience(self.experience)
+        self.skills = _clean_values(raw_skills, limit=12)
+        self.exclude_terms = _clean_values(raw_excludes, limit=15)
         if self.ats_platforms is not None:
             self.ats_platforms = _clean_values(
                 self.ats_platforms, limit=20, lowercase=True
@@ -122,7 +149,7 @@ class SearchParams:
         self.time_filter = sanitize_term(self.time_filter).lower()
         if self.time_filter not in TIME_FILTERS:
             self.time_filter = ""
-        self.preset_id = sanitize_term(self.preset_id)
+        self.preset_id = sanitize_term(self.preset_id).lower()
         self.keyword_mode = sanitize_term(self.keyword_mode).lower()
         self.title_mode = sanitize_term(self.title_mode).lower()
         if self.keyword_mode not in ("and", "or"):
@@ -134,21 +161,16 @@ class SearchParams:
     def _apply_preset_defaults(self) -> None:
         if not self.preset_id:
             return
-        try:
-            preset = get_domain_preset(self.preset_id)
-        except ValueError:
-            return
+        preset = get_domain_preset(self.preset_id)
         if not self.titles:
-            self.titles = [sanitize_term(t) for t in preset.titles if sanitize_term(t)][
-                :6
-            ]
+            self.titles = _clean_values(list(preset.titles), limit=6)
             self.title = self.titles[0] if self.titles else ""
         if not self.skills:
-            self.skills = [sanitize_term(s) for s in preset.skills if sanitize_term(s)]
+            self.skills = _clean_values(list(preset.skills), limit=12)
+            if len(self.skills) > 1:
+                self.keyword_mode = "or"
         if not self.exclude_terms:
-            self.exclude_terms = [
-                sanitize_term(t) for t in preset.exclude_terms if sanitize_term(t)
-            ]
+            self.exclude_terms = _clean_values(list(preset.exclude_terms), limit=15)
 
     def positive_text(self) -> str:
         return " ".join([*self.titles, self.company, *(self.skills or [])])
@@ -180,11 +202,12 @@ def _title_clause(params: SearchParams) -> str:
 
 
 def _location_clause(params: SearchParams) -> str:
+    parts: list[str] = []
     if params.remote:
-        return '("remote" OR "work from home" OR "WFH")'
+        parts.append('("remote" OR "work from home" OR "WFH")')
     if params.location:
-        return google_quoted(params.location)
-    return ""
+        parts.append(google_quoted(params.location))
+    return join_query_parts(parts)
 
 
 def _skills_clause(params: SearchParams) -> str:
@@ -239,9 +262,11 @@ def _core_terms(params: SearchParams) -> str:
 
 
 def _protected_suffix(params: SearchParams, site_filter: str = "") -> str:
-    parts = [_exclude_clause(params)]
+    # Site scope leads so trimming the protected tail drops excludes first.
+    parts = []
     if site_filter:
-        parts.append(site_filter)
+        parts.append(group_top_level_or(site_filter))
+    parts.append(_exclude_clause(params))
     return join_query_parts(parts)
 
 
@@ -659,7 +684,7 @@ def generate_dorks(params: SearchParams) -> dict:
         + _domain_niche_dorks(params)
         + _advanced_dorks(params)
     )
-    warnings = [d.query_warning for d in all_dorks if d.query_warning]
+    warnings = [*params.notes, *(d.query_warning for d in all_dorks if d.query_warning)]
     warnings = list(dict.fromkeys(warnings))
 
     grouped: dict[str, list[dict]] = {}

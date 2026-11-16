@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 
@@ -155,6 +157,45 @@ def test_parse_cv_location_explicit_line_wins():
     assert result.location == "Berlin, Germany"
 
 
+def test_parse_cv_canonicalizes_skill_names():
+    cv = (
+        "Jane Doe\n"
+        "Data Engineer\n"
+        "Skills\n"
+        "Python, PostgreSQL, FastAPI, AWS, JavaScript, TypeScript\n"
+    )
+    result = parse_cv_text(cv)
+    assert result.skills[:6] == [
+        "Python",
+        "PostgreSQL",
+        "FastAPI",
+        "AWS",
+        "JavaScript",
+        "TypeScript",
+    ]
+
+
+def test_parse_cv_orders_skills_by_first_mention():
+    cv = "Jane Doe\nSoftware Engineer\nSkills\nFastAPI, Python, Docker\n"
+    result = parse_cv_text(cv)
+    assert result.skills[:3] == ["FastAPI", "Python", "Docker"]
+
+
+def test_parse_cv_drops_work_mode_tokens_from_skills():
+    cv = (
+        "Jane Doe\n"
+        "Backend Developer\n"
+        "Skills\n"
+        "Python, remote-friendly, hybrid, on-site, visa sponsorship, Docker\n"
+    )
+    result = parse_cv_text(cv)
+    assert result.skills[:2] == ["Python", "Docker"]
+    assert all(
+        token not in {s.lower() for s in result.skills}
+        for token in ("remote-friendly", "hybrid", "on-site", "visa sponsorship")
+    )
+
+
 def test_keyword_mode_or_in_skills():
     result = generate_dorks(
         SearchParams(title="Engineer", skills=["Python", "Go"], keyword_mode="or")
@@ -205,3 +246,146 @@ def test_sanitize_quotes_in_title():
     result = generate_dorks(SearchParams(title='Software "Engineer"'))
     q = result["categories"][0]["dorks"][0]["query"]
     assert q.count('"') % 2 == 0
+
+
+def test_generated_queries_negate_excludes_and_keep_default_phrase():
+    result = generate_dorks(
+        SearchParams(
+            title="Backend Developer",
+            exclude_terms=["intern", "contract", "training course"],
+        )
+    )
+    query = result["categories"][0]["dorks"][0]["query"]
+    assert '-intitle:"how to become"' in query
+    assert "-intern" in query
+    assert "-contract" in query
+    assert '-"training course"' in query
+    assert " to become " not in query.replace('-intitle:"how to become"', "")
+
+
+def test_preset_excludes_are_negated_and_preset_skills_default_to_or():
+    params = SearchParams(preset_id="data")
+    assert params.keyword_mode == "or"
+    result = generate_dorks(params)
+    query = result["categories"][0]["dorks"][0]["query"]
+    assert "-bootcamp" in query
+    assert '-"certificate program"' in query
+    assert '("Python" OR "SQL"' in query
+    assert " bootcamp " not in query
+    assert " certificate program " not in query
+
+
+def test_remote_with_location_keeps_location():
+    result = generate_dorks(
+        SearchParams(title="Technical Writer", location="Berlin", remote=True)
+    )
+    query = result["categories"][0]["dorks"][0]["query"]
+    assert '("remote" OR "work from home" OR "WFH")' in query
+    assert '"Berlin"' in query
+
+
+def test_experience_is_normalized_and_invalid_values_are_dropped():
+    assert SearchParams(title="X", experience="Senior").experience == "senior"
+    assert SearchParams(title="X", experience="entry").experience == "entry level"
+    assert SearchParams(title="X", experience="banana").experience == ""
+    query = generate_dorks(
+        SearchParams(title="Engineer", experience="banana")
+    )["categories"][0]["dorks"][0]["query"]
+    assert '"banana"' not in query
+
+
+def test_preset_id_is_case_insensitive():
+    params = SearchParams(preset_id="DATA")
+    assert params.preset_id == "data"
+    assert params.titles
+
+
+def test_unknown_preset_raises_clear_error():
+    with pytest.raises(ValueError, match="Unknown domain preset"):
+        SearchParams(preset_id="not-a-preset")
+
+
+def test_oversized_inputs_are_trimmed_with_warnings():
+    titles = [f"Title {i}" for i in range(7)]
+    skills = [f"Skill {i}" for i in range(13)]
+    result = generate_dorks(
+        SearchParams(titles=titles, skills=skills, title="A" * 200)
+    )
+    assert len(result["params"]["titles"]) == 6
+    assert len(result["params"]["skills"]) == 12
+    assert any("first 6 job titles" in w for w in result["warnings"])
+    assert any("first 12 skills" in w for w in result["warnings"])
+    assert any("shortened to 120" in w for w in result["warnings"])
+
+
+def test_extreme_inputs_keep_queries_within_length_and_syntax_limits():
+    def distinct(prefix: str, count: int) -> list[str]:
+        return [f"{prefix}{i:02d}" + "x" * 110 for i in range(count)]
+
+    result = generate_dorks(
+        SearchParams(
+            titles=distinct("Title ", 8),
+            skills=distinct("Skill ", 14),
+            exclude_terms=distinct("Exclude ", 16),
+            location="L" * 120,
+            company="C" * 120,
+            remote=True,
+            experience="senior",
+            time_filter="30d",
+            title_mode="or",
+            keyword_mode="or",
+            company_domains=[f"company{i}.com" for i in range(4)],
+        )
+    )
+    assert result["warnings"]
+    for category in result["categories"]:
+        for dork in category["dorks"]:
+            query = dork["query"]
+            assert len(query) <= 1800, query
+            assert query.count('"') % 2 == 0, query
+            assert query.count("(") == query.count(")"), query
+            assert not re.search(r"-(?:intitle|inurl|site|filetype):(\s|$)", query), query
+            assert not re.search(
+                r"(?:^|\s)(?:intitle|inurl|site|filetype):(\s|$)", query
+            ), query
+            assert not re.search(r"\(\s*OR\b|\bOR\s*\)|(^|\s)OR\s*$", query), query
+    linkedin = next(
+        dork
+        for category in result["categories"]
+        for dork in category["dorks"]
+        if dork["label"] == "LinkedIn Jobs"
+    )
+    assert "site:linkedin.com/jobs/view" in linkedin["query"]
+
+
+def _has_top_level_site_or(query: str) -> bool:
+    depth = 0
+    in_quotes = False
+    for index, char in enumerate(query):
+        if char == '"':
+            in_quotes = not in_quotes
+        elif not in_quotes:
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth = max(depth - 1, 0)
+            elif depth == 0 and query.startswith(" OR site:", index):
+                return True
+    return False
+
+
+def test_all_generated_site_or_filters_are_grouped():
+    scenarios = [
+        SearchParams(title="Backend Developer", exclude_terms=["intern"]),
+        SearchParams(preset_id="data"),
+        SearchParams(preset_id="cybersecurity"),
+        SearchParams(title="Engineer", location="Tunis", remote=True),
+        SearchParams(title="DevOps", ats_platforms=["greenhouse", "jobvite"]),
+        SearchParams(title="Designer", company="Stripe", company_domains=["a.io", "b.io"]),
+    ]
+    for params in scenarios:
+        result = generate_dorks(params)
+        for category in result["categories"]:
+            for dork in category["dorks"]:
+                query = dork["query"]
+                assert not _has_top_level_site_or(query), query

@@ -188,6 +188,53 @@ SKILLS_SECTION = re.compile(
     re.IGNORECASE,
 )
 
+SKILL_ALIASES = {
+    "golang": "go",
+}
+
+SKILL_DISPLAY = {
+    "api": "API",
+    "aws": "AWS",
+    "c#": "C#",
+    "c++": "C++",
+    "ci/cd": "CI/CD",
+    "css": "CSS",
+    "devops": "DevOps",
+    "devsecops": "DevSecOps",
+    "fastapi": "FastAPI",
+    "gcp": "GCP",
+    "git": "Git",
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "graphql": "GraphQL",
+    "html": "HTML",
+    "ios": "iOS",
+    "javascript": "JavaScript",
+    "mongodb": "MongoDB",
+    "mysql": "MySQL",
+    "next.js": "Next.js",
+    "node.js": "Node.js",
+    "numpy": "NumPy",
+    "php": "PHP",
+    "postgresql": "PostgreSQL",
+    "power bi": "Power BI",
+    "pytorch": "PyTorch",
+    "qa": "QA",
+    "sre": "SRE",
+    "sql": "SQL",
+    "tensorflow": "TensorFlow",
+    "typescript": "TypeScript",
+    "ui": "UI",
+    "ux": "UX",
+}
+
+NON_SKILL_TOKEN = re.compile(
+    r"^(remote(?:[-\s]?friendly)?|hybrid|on[-\s]?site|wfh|relocation|"
+    r"visa\s+sponsorship|full[-\s]?time|part[-\s]?time|contract|freelance|"
+    r"references?\s+available|available\s+on\s+request)$",
+    re.IGNORECASE,
+)
+
 MAX_CV_BYTES = 5 * 1024 * 1024
 
 
@@ -356,34 +403,32 @@ def _extract_skills(text: str) -> list[str]:
     skill_blob = text[section.end() : section.end() + 1200] if section else text
 
     lower_blob = skill_blob.lower()
-    for skill in sorted(KNOWN_SKILLS, key=len, reverse=True):
+    matches: list[tuple[int, str]] = []
+    for skill in KNOWN_SKILLS:
         pattern = re.escape(skill).replace(r"\ ", r"[\s-]?")
-        if re.search(rf"\b{pattern}\b", lower_blob, re.I):
-            key = skill.lower()
-            if key not in seen:
-                seen.add(key)
-                display = (
-                    skill.upper()
-                    if skill in {"aws", "gcp", "sql", "api", "ci/cd", "sre"}
-                    else skill.title()
-                )
-                if skill == "c++":
-                    display = "C++"
-                elif skill == "node.js":
-                    display = "Node.js"
-                elif skill == "next.js":
-                    display = "Next.js"
-                found.append(display)
+        match = re.search(rf"\b{pattern}\b", lower_blob, re.I)
+        if not match:
+            continue
+        key = SKILL_ALIASES.get(skill, skill)
+        if key in seen:
+            continue
+        seen.add(key)
+        matches.append((match.start(), SKILL_DISPLAY.get(skill, skill.title())))
+    for _, display in sorted(matches, key=lambda item: (item[0], item[1])):
+        found.append(display)
 
     if section:
         block = skill_blob.split("\n\n")[0]
         for part in re.split(r"[,|•·\n/;]", block):
             token = part.strip()
-            if 2 <= len(token) <= 40 and not token.isdigit():
-                key = token.lower()
-                if key not in seen and len(found) < 12:
-                    seen.add(key)
-                    found.append(token)
+            if not 2 <= len(token) <= 40 or token.isdigit():
+                continue
+            if NON_SKILL_TOKEN.match(token):
+                continue
+            key = token.lower()
+            if key not in seen and len(found) < 12:
+                seen.add(key)
+                found.append(token)
 
     return found[:10]
 

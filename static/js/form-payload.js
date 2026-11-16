@@ -9,12 +9,34 @@ function mode(value, fallback) {
 
 function list(value) {
   return Array.isArray(value)
-    ? value.filter((item) => typeof item === "string" && item.trim())
+    ? value
+        .filter((item) => typeof item === "string" && item.trim())
+        .map((item) => item.trim())
     : [];
 }
 
 function stringValue(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function asHistoryList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+export async function readJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+export function requireArrayField(data, field, label) {
+  const value = data && typeof data === "object" ? data[field] : null;
+  if (!Array.isArray(value)) {
+    throw new Error(`Unexpected response from the server (missing ${label}).`);
+  }
+  return value;
 }
 
 export function splitCommaList(value) {
@@ -75,9 +97,32 @@ export function historyKey(config) {
   return JSON.stringify(normalizeHistoryEntry(config));
 }
 
+function detailMessage(detail) {
+  if (typeof detail === "string") return detail.trim();
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (!item || typeof item !== "object") return "";
+        const field = Array.isArray(item.loc)
+          ? item.loc.filter((part) => part !== "body").join(".")
+          : "";
+        const message = typeof item.msg === "string" ? item.msg.trim() : "";
+        if (field && message) return `${field}: ${message}`;
+        return message;
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  if (detail && typeof detail === "object" && typeof detail.message === "string") {
+    return detail.message.trim();
+  }
+  return "";
+}
+
 export function formatRequestError(response, body) {
   const status = Number(response?.status) || 0;
-  const detail = body && typeof body.detail === "string" ? body.detail.trim() : "";
+  const detail = detailMessage(body?.detail);
   if (status === 0) {
     return "Could not reach the server. Check your connection and try again.";
   }

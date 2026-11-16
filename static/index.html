@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Build targeted Google dorks for ATS career pages, company sites, remote boards, and niche job listings. Copy or open every query in one click." />
   <title>JobScout Dorks: Google Dork Engine for Job Search</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=20261116-5" />
+  <link rel="stylesheet" href="/static/style.css?v=20261116-10" />
 </head>
 <body>
   <div class="bg-glow" aria-hidden="true"></div>
@@ -28,7 +29,7 @@
         <ul class="hero-stats" aria-label="Coverage">
           <li><strong>8</strong> categories</li>
           <li><strong>50+</strong> query templates</li>
-          <li><strong>17</strong> ATS platforms</li>
+          <li><strong>16</strong> ATS platforms</li>
         </ul>
       </div>
     </header>
@@ -70,16 +71,14 @@
           <div class="drop-zone" id="drop-zone">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <p class="drop-zone-title">Drop your CV here</p>
-            <p class="drop-zone-hint">PDF, DOCX, or TXT, parsed locally and never stored</p>
-            <label class="btn-secondary file-picker-btn">
-              Choose file
-              <input type="file" id="cv-file" accept=".pdf,.docx,.txt,.md" hidden />
-            </label>
-            <p class="file-name" id="file-name"></p>
+            <p class="drop-zone-hint">PDF, DOCX, or TXT, parsed in memory and never stored</p>
+            <button type="button" class="btn-secondary file-picker-btn" id="cv-choose">Choose file</button>
+            <input type="file" id="cv-file" accept=".pdf,.docx,.txt,.md" hidden />
+            <p class="file-name" id="file-name" role="status"></p>
           </div>
           <button type="button" class="btn-secondary cv-parse-btn" id="cv-parse-btn" disabled>Extract &amp; fill form</button>
-          <p class="field-msg" id="cv-status" hidden role="status"></p>
         </div>
+        <p class="field-msg cv-status" id="cv-status" hidden role="status"></p>
 
         <form id="dork-form" novalidate>
           <div class="form-section">
@@ -119,13 +118,13 @@
                 <span class="field-label">Location</span>
                 <input type="text" name="location" placeholder="London, UK" />
               </label>
-              <label class="field">
-                <span class="field-label">Posted within</span>
+              <div class="field">
+                <label class="field-label" for="time-filter">Posted within</label>
                 <select name="time_filter" id="time-filter">
                   <option value="">Any time</option>
                 </select>
                 <span class="field-msg error-msg" id="time-filter-status" hidden role="status"></span>
-              </label>
+              </div>
               <label class="field">
                 <span class="field-label">Experience</span>
                 <select name="experience">
@@ -208,7 +207,7 @@
       </section>
 
       <div class="results-column">
-        <section class="panel results-panel" id="results-panel" hidden aria-live="polite">
+        <section class="panel results-panel" id="results-panel" hidden>
           <div class="results-header">
             <div>
               <h2 id="results-heading">Generated dorks</h2>
@@ -224,6 +223,7 @@
           </div>
           <nav class="category-nav" id="category-nav" hidden aria-label="Jump to category"></nav>
           <p class="sr-only" id="results-status" role="status"></p>
+          <p class="sr-only" id="copy-status" role="status"></p>
           <div id="results"></div>
           <p class="results-error" id="results-error" hidden role="alert"></p>
         </section>
@@ -255,6 +255,7 @@
     </footer>
   </div>
 
-  <script type="module" src="/static/app.js"></script>
+  <!--PRESET_BOOTSTRAP-->
+  <script type="module" src="/static/app.js?v=20261116-10"></script>
 </body>
 </html>

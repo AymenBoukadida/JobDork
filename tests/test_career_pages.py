@@ -14,10 +14,10 @@ def test_all_ats_platforms_resolve():
     ids = [p.id for p in ATS_PLATFORMS]
     assert len(ids) == len(set(ids)), "ATS ids must be unique"
     resolved = resolve_ats_platforms(None)
-    assert len(resolved) >= 17
+    assert len(resolved) >= 16
+    assert "eightfold" not in ids
     new_ids = {
         "workable",
-        "eightfold",
         "teamtailor",
         "recruitee",
         "pinpoint",

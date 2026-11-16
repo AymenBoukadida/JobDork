@@ -39,17 +39,17 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "InfoSec Jobs",
-                "site:infosec-jobs.com OR site:infosecjobs.com",
+                "(site:infosec-jobs.com OR site:infosecjobs.com)",
                 "Dedicated information-security job boards",
             ),
             NicheBoard(
                 "CyberSec Listings",
-                'site:cybersecurityjobsite.com OR inurl:cybersecurity jobs "apply"',
+                '(site:cybersecurityjobsite.com OR inurl:cybersecurity jobs "apply")',
                 "Cybersecurity niche boards and career pages",
             ),
             NicheBoard(
                 "Clearance / Gov",
-                "site:clearedjobs.net OR (site:usajobs.gov cybersecurity)",
+                "(site:clearedjobs.net OR site:usajobs.gov cybersecurity)",
                 "Clearance and public-sector security roles",
             ),
         ),
@@ -65,12 +65,12 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "Kaggle Jobs",
-                'site:kaggle.com jobs OR site:kaggle.com/discussions "hiring"',
+                '(site:kaggle.com jobs OR site:kaggle.com/discussions "hiring")',
                 "Kaggle community job threads",
             ),
             NicheBoard(
                 "AI / ML Boards",
-                "site:mljobs.com OR site:ai-jobs.net",
+                "(site:mljobs.com OR site:ai-jobs.net)",
                 "Machine-learning focused listings",
             ),
         ),
@@ -91,7 +91,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "DevOps Jobs",
-                'inurl:devops jobs "apply" OR site:devopsjobs.io',
+                '(inurl:devops jobs "apply" OR site:devopsjobs.io)',
                 "DevOps-specific job sources",
             ),
         ),
@@ -107,7 +107,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "Frontend Focus",
-                'site:frontenddeveloperjob.com OR inurl:frontend jobs "apply"',
+                '(site:frontenddeveloperjob.com OR inurl:frontend jobs "apply")',
                 "Frontend-specific job boards",
             ),
         ),
@@ -123,7 +123,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "Product Jobs",
-                "site:productjobs.com OR site:mindtheproduct.com jobs",
+                "(site:productjobs.com OR site:mindtheproduct.com) jobs",
                 "Product-management job sources",
             ),
         ),
@@ -143,7 +143,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "BioTech Jobs",
-                "site:biohealthmatics.com jobs OR site:biotech.org careers",
+                "(site:biohealthmatics.com jobs OR site:biotech.org careers)",
                 "Life-sciences and biotech career pages",
             ),
         ),
@@ -164,7 +164,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
             ),
             NicheBoard(
                 "FinTech Jobs",
-                'inurl:fintech jobs "apply" OR site:fintechfutures.com jobs',
+                '(inurl:fintech jobs "apply" OR site:fintechfutures.com jobs)',
                 "FinTech-focused listings",
             ),
         ),
@@ -180,7 +180,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "Legal Jobs",
-                "site:lawcrossing.com OR site:legalweekjobs.com",
+                "(site:lawcrossing.com OR site:legalweekjobs.com)",
                 "Legal profession job boards",
             ),
         ),
@@ -203,7 +203,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "Sysadmin Listings",
-                'intitle:"systems administrator" OR intitle:"system administrator" (apply OR hiring)',
+                '(intitle:"systems administrator" OR intitle:"system administrator") (apply OR hiring)',
                 "Pages titled for sysadmin roles",
             ),
             NicheBoard(
@@ -293,7 +293,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
             ),
             NicheBoard(
                 "AWS Cloud Ops",
-                '("AWS Administrator" OR "Cloud Engineer") site:*.amazon.com careers OR (apply AWS admin)',
+                'site:amazon.com (careers OR jobs) ("AWS Administrator" OR "Cloud Engineer")',
                 "AWS-focused cloud operations listings",
             ),
         ),
@@ -315,12 +315,12 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
         (
             NicheBoard(
                 "IT Specialist",
-                'intitle:"IT Specialist" OR intitle:"Information Technology" (apply OR opening)',
+                '(intitle:"IT Specialist" OR intitle:"Information Technology") (apply OR opening)',
                 "General IT specialist postings",
             ),
             NicheBoard(
                 "IT Job Boards UK/EU",
-                "site:technojobs.co.uk OR site:itjobswatch.co.uk",
+                "(site:technojobs.co.uk OR site:itjobswatch.co.uk)",
                 "Regional IT-focused job boards",
             ),
             NicheBoard(
@@ -400,7 +400,7 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
             ),
             NicheBoard(
                 "TanitJobs + Option Carrière",
-                "site:tanitjobs.com OR site:optioncarriere.tn",
+                "(site:tanitjobs.com OR site:optioncarriere.tn)",
                 "Combined search on top local boards",
             ),
         ),

@@ -1,9 +1,12 @@
 import { KEYS, storageGet, storageSet } from "./js/storage.js";
 import {
+  asHistoryList,
   buildPayload,
   formatRequestError,
   historyKey,
   normalizeHistoryEntry,
+  readJson,
+  requireArrayField,
 } from "./js/form-payload.js";
 import { showToast } from "./js/toast.js";
 
@@ -14,12 +17,14 @@ const resultsEl = document.getElementById("results");
 const resultsMeta = document.getElementById("results-meta");
 const resultsWarnings = document.getElementById("results-warnings");
 const resultsStatus = document.getElementById("results-status");
+const copyStatus = document.getElementById("copy-status");
 const copyAllBtn = document.getElementById("copy-all");
 const categoryNav = document.getElementById("category-nav");
 const atsContainer = document.getElementById("ats-platforms");
 const atsCount = document.getElementById("ats-count");
 const cvUploadPanel = document.getElementById("cv-upload-panel");
 const cvFileInput = document.getElementById("cv-file");
+const cvChooseBtn = document.getElementById("cv-choose");
 const cvParseBtn = document.getElementById("cv-parse-btn");
 const cvStatus = document.getElementById("cv-status");
 const dropZone = document.getElementById("drop-zone");
@@ -41,44 +46,88 @@ const presetStatus = document.getElementById("preset-status");
 const timeFilterSelect = document.getElementById("time-filter");
 const timeFilterStatus = document.getElementById("time-filter-status");
 const atsStatus = document.getElementById("ats-status");
+const advancedDetails = document.getElementById("advanced-details");
 
 let lastDorkResults = null;
 let allDorksFlat = [];
 let domainPresets = [];
 let isLoading = false;
 
-init();
+copyAllBtn.disabled = true;
 
-function init() {
-  loadAtsPlatforms();
-  loadPresets();
-  loadTimeFilters();
-  renderHistory();
+async function init() {
   bindEvents();
+  await Promise.allSettled([loadPresets(), loadTimeFilters(), loadAtsPlatforms()]);
+  renderHistory();
+}
+
+function normalizePresets(raw) {
+  return raw
+    .filter((preset) => preset && typeof preset.id === "string")
+    .map((preset) => ({
+      id: preset.id,
+      name: typeof preset.name === "string" ? preset.name : preset.id,
+      icon: typeof preset.icon === "string" ? preset.icon : "",
+      description:
+        typeof preset.description === "string" ? preset.description : "",
+      titles: Array.isArray(preset.titles)
+        ? preset.titles.filter((title) => typeof title === "string")
+        : [],
+      skills: Array.isArray(preset.skills)
+        ? preset.skills.filter((skill) => typeof skill === "string")
+        : [],
+      exclude_terms: Array.isArray(preset.exclude_terms)
+        ? preset.exclude_terms.filter((term) => typeof term === "string")
+        : [],
+    }));
+}
+
+function renderPresets() {
+  presetGrid.innerHTML = domainPresets
+    .map((p) => {
+      const domId = `preset-desc-${String(p.id).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      return `
+    <div class="preset-item" role="listitem">
+      <button type="button" class="preset-card" data-preset-id="${escapeHtml(p.id)}" title="${escapeHtml(p.description)}" aria-describedby="${domId}">
+        <span class="preset-icon" aria-hidden="true">${escapeHtml(p.icon)}</span>
+        <span class="preset-name">${escapeHtml(p.name)}</span>
+      </button>
+      <span class="sr-only" id="${domId}">${escapeHtml(p.description)}</span>
+    </div>`;
+    })
+    .join("");
+  presetGrid.querySelectorAll(".preset-card").forEach((btn) => {
+    btn.addEventListener("click", () => applyPreset(btn.dataset.presetId));
+  });
+  setStatus(presetStatus, "");
+}
+
+function bootstrappedPresets() {
+  const node = document.getElementById("preset-bootstrap");
+  if (!node) return null;
+  try {
+    const parsed = JSON.parse(node.textContent || "null");
+    return Array.isArray(parsed) ? normalizePresets(parsed) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function loadPresets() {
+  const bootstrapped = bootstrappedPresets();
+  if (bootstrapped) {
+    domainPresets = bootstrapped;
+    renderPresets();
+    return;
+  }
   try {
     const res = await fetch("/api/presets");
-    const data = await res.json().catch(() => ({}));
+    const data = await readJson(res);
     if (!res.ok) throw new Error(formatRequestError(res, data));
-    domainPresets = data.presets || [];
-    presetGrid.innerHTML = domainPresets
-      .map(
-        (p) => `
-    <div class="preset-item" role="listitem">
-      <button type="button" class="preset-card" data-preset-id="${escapeHtml(p.id)}" title="${escapeHtml(p.description)}">
-        <span class="preset-icon" aria-hidden="true">${p.icon}</span>
-        <span class="preset-name">${escapeHtml(p.name)}</span>
-        <span class="sr-only">${escapeHtml(p.description)}</span>
-      </button>
-    </div>`
-      )
-      .join("");
-    presetGrid.querySelectorAll(".preset-card").forEach((btn) => {
-      btn.addEventListener("click", () => applyPreset(btn.dataset.presetId));
-    });
-    setStatus(presetStatus, "");
+    domainPresets = normalizePresets(
+      requireArrayField(data, "presets", "preset list")
+    );
+    renderPresets();
   } catch (err) {
     domainPresets = [];
     presetGrid.innerHTML = "";
@@ -89,9 +138,11 @@ async function loadPresets() {
 async function loadTimeFilters() {
   try {
     const res = await fetch("/api/time-filters");
-    const data = await res.json().catch(() => ({}));
+    const data = await readJson(res);
     if (!res.ok) throw new Error(formatRequestError(res, data));
-    for (const f of data.filters || []) {
+    const filters = requireArrayField(data, "filters", "time filter list");
+    for (const f of filters) {
+      if (!f || typeof f.id !== "string" || typeof f.label !== "string") continue;
       const opt = document.createElement("option");
       opt.value = f.id;
       opt.textContent = f.label;
@@ -109,11 +160,16 @@ function applyPreset(presetId) {
 
   form.titles.value = preset.titles.join(", ");
   form.skills.value = preset.skills.join(", ");
+  if (preset.skills.length > 1) {
+    const orMode = form.querySelector('input[name="keyword_mode"][value="or"]');
+    if (orMode) orMode.checked = true;
+  }
   if (preset.exclude_terms?.length) {
     form.exclude_terms.value = preset.exclude_terms.join(", ");
-    document.getElementById("advanced-details").open = true;
+    advancedDetails.open = true;
   }
   presetIdInput.value = presetId;
+  clearTitleError();
 
   presetGrid.querySelectorAll(".preset-card").forEach((el) => {
     el.classList.toggle("active", el.dataset.presetId === presetId);
@@ -146,6 +202,7 @@ function bindEvents() {
     });
   });
 
+  cvChooseBtn.addEventListener("click", () => cvFileInput.click());
   cvParseBtn.addEventListener("click", parseCv);
   cvFileInput.addEventListener("change", onFileSelected);
   setupDropZone();
@@ -171,14 +228,9 @@ function bindEvents() {
   });
 
   form.addEventListener("input", (e) => {
-    if (e.target.name === "titles") clearPresetSelection();
-  });
-
-  form.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.target.tagName !== "TEXTAREA" && !e.shiftKey) {
-      if (e.target.type === "button" || e.target.type === "file") return;
-      e.preventDefault();
-      form.requestSubmit();
+    if (e.target.name === "titles") {
+      clearPresetSelection();
+      if (e.target.value.trim()) clearTitleError();
     }
   });
 }
@@ -218,9 +270,15 @@ function setCvFile(file) {
 async function loadAtsPlatforms() {
   try {
     const res = await fetch("/api/ats-platforms");
-    const data = await res.json().catch(() => ({}));
+    const data = await readJson(res);
     if (!res.ok) throw new Error(formatRequestError(res, data));
-    atsContainer.innerHTML = (data.platforms || [])
+    const platforms = requireArrayField(data, "platforms", "ATS platform list").filter(
+      (platform) =>
+        platform &&
+        typeof platform.id === "string" &&
+        typeof platform.name === "string"
+    );
+    atsContainer.innerHTML = platforms
       .map(
         (p) => `
     <label class="ats-option">
@@ -271,9 +329,13 @@ function validateForm(payload) {
     form.titles.focus();
     return false;
   }
+  clearTitleError();
+  return true;
+}
+
+function clearTitleError() {
   form.titles.removeAttribute("aria-invalid");
   hideFieldError(titleError);
-  return true;
 }
 
 function showFieldError(el, msg) {
@@ -292,8 +354,8 @@ async function onSubmit(e) {
   const payload = getFormPayload();
   if (!validateForm(payload)) return;
 
-  saveHistoryEntry(payload);
-  await generateDorks(payload);
+  const generated = await generateDorks(payload);
+  if (generated) saveHistoryEntry(payload);
 }
 
 async function generateDorks(payload) {
@@ -301,65 +363,75 @@ async function generateDorks(payload) {
   clearResultsUi();
 
   try {
-    const res = await fetch("/api/dorks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
+    let res;
+    try {
+      res = await fetch("/api/dorks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      throw new Error(formatRequestError({ status: 0 }, {}));
+    }
+    const data = await readJson(res);
     if (!res.ok) throw new Error(formatRequestError(res, data));
+    if (!data || typeof data !== "object" || !Array.isArray(data.categories)) {
+      throw new Error("Unexpected response from the server. Try again.");
+    }
 
     lastDorkResults = data;
     renderDorkResults(data);
     showResultsPanel();
-    resultsStatus.textContent = `${data.total} queries generated.`;
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     resultsPanel.scrollIntoView({
       behavior: reduceMotion ? "auto" : "smooth",
       block: "start",
     });
+    return true;
   } catch (err) {
-    const message =
-      err?.name === "TypeError" ? formatRequestError({ status: 0 }, {}) : err.message;
     showResultsPanel();
     resultsError.hidden = false;
-    resultsError.textContent = message;
+    resultsError.textContent = err?.message || "Could not generate dorks. Try again.";
+    return false;
   } finally {
     setLoading(false);
   }
 }
 
 function renderDorkResults(data) {
-  allDorksFlat = data.categories.flatMap((c) => c.dorks);
+  const categories = data.categories.filter((cat) => cat && Array.isArray(cat.dorks));
+  allDorksFlat = categories.flatMap((cat) => cat.dorks);
+  const total = Number.isFinite(data.total) ? data.total : allDorksFlat.length;
+  const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+  const params = data.params && typeof data.params === "object" ? data.params : {};
+  const titles = Array.isArray(params.titles) ? params.titles : [];
 
   const titlesLabel =
-    data.params.titles?.length > 1
-      ? data.params.titles.join(", ")
-      : data.params.title || data.params.titles?.[0] || "";
-  resultsMeta.textContent = `${data.total} queries for ${titlesLabel}${
-    data.params.location ? ` · ${data.params.location}` : ""
-  }${data.params.time_filter ? ` · ${data.params.time_filter}` : ""}`;
+    titles.length > 1 ? titles.join(", ") : params.title || titles[0] || "";
+  resultsMeta.textContent = `${total} queries for ${titlesLabel}${
+    params.location ? ` · ${params.location}` : ""
+  }${params.time_filter ? ` · ${params.time_filter}` : ""}`;
 
-  if (data.warnings?.length) {
+  if (warnings.length) {
     resultsWarnings.hidden = false;
-    resultsWarnings.textContent = data.warnings.join(" ");
+    resultsWarnings.textContent = warnings.join(" ");
   }
 
   categoryNav.hidden = false;
-  categoryNav.innerHTML = data.categories
+  categoryNav.innerHTML = categories
     .map(
       (cat) =>
-        `<a href="#cat-${cat.id}"><span aria-hidden="true">${cat.icon}</span> ${escapeHtml(cat.label)}</a>`
+        `<a href="#cat-${escapeHtml(cat.id)}"><span aria-hidden="true">${escapeHtml(cat.icon)}</span> ${escapeHtml(cat.label)}</a>`
     )
     .join("");
 
   let idx = 0;
-  resultsEl.innerHTML = data.categories
+  resultsEl.innerHTML = categories
     .map(
       (cat) => `
-    <section class="category" id="cat-${cat.id}" aria-labelledby="cat-title-${cat.id}">
-      <h3 class="category-title" id="cat-title-${cat.id}">
-        <span aria-hidden="true">${cat.icon}</span> ${escapeHtml(cat.label)}
+    <section class="category" id="cat-${escapeHtml(cat.id)}" aria-labelledby="cat-title-${escapeHtml(cat.id)}">
+      <h3 class="category-title" id="cat-title-${escapeHtml(cat.id)}">
+        <span aria-hidden="true">${escapeHtml(cat.icon)}</span> ${escapeHtml(cat.label)}
         <span class="category-count">${cat.dorks.length}</span>
       </h3>
       ${cat.dorks.map((d) => dorkCard(d, idx++)).join("")}
@@ -367,10 +439,18 @@ function renderDorkResults(data) {
     )
     .join("");
 
+  copyAllBtn.disabled = false;
+  resultsStatus.textContent = `${total} queries generated.${
+    warnings.length ? ` ${warnings.join(" ")}` : ""
+  }`;
+
   resultsEl.querySelectorAll("[data-dork-index]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const query = allDorksFlat[Number(btn.dataset.dorkIndex)]?.query;
-      if (query) copyText(query, btn);
+      if (!query) return;
+      if (await copyText(query, btn)) {
+        copyStatus.textContent = "Query copied to clipboard.";
+      }
     });
   });
 }
@@ -388,13 +468,13 @@ function dorkCard(dork, index) {
       <div class="dork-query">${escapeHtml(dork.query)}</div>
       <div class="dork-actions">
         <button type="button" class="btn-icon" data-dork-index="${index}" aria-label="Copy ${label} query">Copy</button>
-        <a href="${dork.google_url}" target="_blank" rel="noopener noreferrer" class="btn-icon open-google" aria-label="Open ${label} in Google">Open in Google</a>
+        <a href="${escapeHtml(dork.google_url)}" target="_blank" rel="noopener noreferrer" class="btn-icon open-google" aria-label="Open ${label} in Google">Open in Google</a>
       </div>
     </article>`;
 }
 
 function saveHistoryEntry(config) {
-  const history = storageGet(KEYS.history, []) || [];
+  const history = asHistoryList(storageGet(KEYS.history, []));
   const key = historyKey(config);
   const entry = {
     ...normalizeHistoryEntry(config),
@@ -409,7 +489,9 @@ function saveHistoryEntry(config) {
 }
 
 function renderHistory() {
-  const history = storageGet(KEYS.history, []) || [];
+  const history = asHistoryList(storageGet(KEYS.history, [])).filter(
+    (entry) => entry && typeof entry === "object"
+  );
   historyEmpty.hidden = history.length > 0;
   historyList.innerHTML = history
     .map(
@@ -435,12 +517,16 @@ function renderHistory() {
 }
 
 function displayTitles(config) {
-  if (config.titles?.length) return config.titles.join(", ");
-  return config.title || "Untitled";
+  const titles = Array.isArray(config?.titles)
+    ? config.titles.filter((title) => typeof title === "string" && title)
+    : [];
+  if (titles.length) return titles.join(", ");
+  return typeof config?.title === "string" && config.title ? config.title : "Untitled";
 }
 
 function applyConfigToForm(config) {
   const entry = normalizeHistoryEntry(config);
+  clearTitleError();
   form.titles.value = entry.titles.join(", ");
   form.location.value = entry.location;
   form.skills.value = entry.skills.join(", ");
@@ -449,7 +535,10 @@ function applyConfigToForm(config) {
   form.company_domains.value = entry.company_domains.join(", ");
   form.experience.value = entry.experience;
   form.remote.checked = entry.remote;
-  form.time_filter.value = entry.time_filter;
+  const hasTimeOption = Array.from(form.time_filter.options).some(
+    (option) => option.value === entry.time_filter
+  );
+  form.time_filter.value = hasTimeOption ? entry.time_filter : "";
   presetIdInput.value = entry.preset_id;
   presetGrid.querySelectorAll(".preset-card").forEach((el) => {
     el.classList.toggle("active", el.dataset.presetId === entry.preset_id);
@@ -470,9 +559,9 @@ function applyConfigToForm(config) {
     updateAtsCount();
   }
 
-  if (entry.exclude_terms.length || entry.company || entry.company_domains.length || entry.remote) {
-    document.getElementById("advanced-details").open = true;
-  }
+  advancedDetails.open = Boolean(
+    entry.exclude_terms.length || entry.company || entry.company_domains.length || entry.remote
+  );
 }
 
 function clearHistory() {
@@ -509,13 +598,17 @@ async function parseCv() {
 
   try {
     const res = await fetch("/api/cv/parse", { method: "POST", body });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to parse CV");
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(formatRequestError(res, data));
+    if (!data || typeof data !== "object") {
+      throw new Error("Unexpected response from the server. Try again.");
+    }
 
     applyCvToForm(data);
+    const skillCount = Array.isArray(data.skills) ? data.skills.length : 0;
     cvStatus.className = "field-msg success-msg";
     cvStatus.textContent = data.title
-      ? `Filled form from CV (${data.skills?.length || 0} skills). Review and generate dorks.`
+      ? `Filled form from CV (${skillCount} skills). Review and generate dorks.`
       : "Extracted text. Please set a job title manually.";
     modeTabs.forEach((t) => {
       t.classList.remove("active");
@@ -538,21 +631,29 @@ function applyCvToForm(data) {
   if (data.title) form.titles.value = data.title;
   clearPresetSelection();
   if (data.location) form.location.value = data.location;
-  if (data.skills?.length) form.skills.value = data.skills.join(", ");
+  if (Array.isArray(data.skills) && data.skills.length) {
+    form.skills.value = data.skills.join(", ");
+  }
   if (data.experience) form.experience.value = data.experience;
   if (data.suggested_remote) {
     form.remote.checked = true;
-    document.getElementById("advanced-details").open = true;
+    advancedDetails.open = true;
   }
+  if (form.titles.value.trim()) clearTitleError();
 }
 
 function clearResultsUi() {
+  lastDorkResults = null;
+  allDorksFlat = [];
   resultsEl.innerHTML = "";
   resultsMeta.textContent = "";
   resultsWarnings.hidden = true;
+  resultsWarnings.textContent = "";
   resultsError.hidden = true;
   resultsError.textContent = "";
   resultsStatus.textContent = "";
+  copyStatus.textContent = "";
+  copyAllBtn.disabled = true;
   categoryNav.hidden = true;
   categoryNav.innerHTML = "";
 }
@@ -580,10 +681,15 @@ function setStatus(el, message, type = "error") {
 }
 
 async function copyAllQueries() {
-  if (!lastDorkResults) return;
-  const all = lastDorkResults.categories.flatMap((c) => c.dorks.map((d) => d.query)).join("\n\n");
-  await copyText(all, copyAllBtn);
-  showToast(`Copied ${lastDorkResults.total} queries`);
+  if (!lastDorkResults || !Array.isArray(lastDorkResults.categories)) return;
+  const queries = lastDorkResults.categories.flatMap((category) =>
+    Array.isArray(category.dorks) ? category.dorks.map((dork) => dork.query) : []
+  );
+  if (!queries.length) return;
+  if (await copyText(queries.join("\n\n"), copyAllBtn)) {
+    copyStatus.textContent = `${queries.length} queries copied to clipboard.`;
+    showToast(`Copied ${queries.length} queries`);
+  }
 }
 
 const HTML_ESCAPES = {
@@ -605,25 +711,27 @@ async function copyText(text, btn) {
       if (btn.querySelector("svg")) {
         btn.classList.add("copied");
         setTimeout(() => btn.classList.remove("copied"), 1500);
-        return;
+      } else {
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove("copied");
+        }, 1500);
       }
-      const orig = btn.textContent;
-      btn.textContent = "Copied!";
-      btn.classList.add("copied");
-      setTimeout(() => {
-        btn.textContent = orig;
-        btn.classList.remove("copied");
-      }, 1500);
     }
+    return true;
   } catch {
     showToast("Could not copy to clipboard", { type: "error" });
+    return false;
   }
 }
 
 function formatDate(iso) {
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return date.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 }
+
+init();

@@ -15,7 +15,7 @@ ATS_PLATFORMS: tuple[AtsPlatform, ...] = (
     AtsPlatform(
         "greenhouse",
         "Greenhouse",
-        "site:boards.greenhouse.io OR site:job-boards.greenhouse.io",
+        "(site:boards.greenhouse.io OR site:job-boards.greenhouse.io)",
         "Greenhouse ATS",
     ),
     AtsPlatform(
@@ -57,7 +57,7 @@ ATS_PLATFORMS: tuple[AtsPlatform, ...] = (
     AtsPlatform(
         "jobvite",
         "Jobvite",
-        "inurl:jobvite.com OR site:jobs.jobvite.com",
+        "(inurl:jobvite.com OR site:jobs.jobvite.com)",
         "Jobvite ATS",
     ),
     AtsPlatform(
@@ -65,12 +65,6 @@ ATS_PLATFORMS: tuple[AtsPlatform, ...] = (
         "Workable",
         "site:apply.workable.com",
         "Workable-hosted job pages",
-    ),
-    AtsPlatform(
-        "eightfold",
-        "Eightfold",
-        "site:jobs.eightfold.ai",
-        "Eightfold AI career portals",
     ),
     AtsPlatform(
         "teamtailor",

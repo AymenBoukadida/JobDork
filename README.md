@@ -4,6 +4,8 @@ A tool for job hunting with Google search operators. You enter roles, skills, lo
 
 ## Running it
 
+Python 3.12+ is required.
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate        # Windows
@@ -13,21 +15,31 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+Open `http://127.0.0.1:8000`.
+
 ## Testing
 
 ```bash
+pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest -q
 node --test tests/frontend/payload.test.mjs
 ```
 
 The frontend tests use Node's built-in test runner (Node 20+); there is no npm install step.
 
+## Docker
+
+```bash
+docker build -t jobscout-dorks .
+docker run --rm -p 8000:8000 jobscout-dorks
+```
+
 
 ## Catching postings before the boards do
 
 Companies publish a job on their own careers page or ATS-hosted board first. Aggregators like LinkedIn and Indeed re-index it hours or days later. The app targets that gap in three ways:
 
-1. The ATS Platforms section queries each backend directly. 17 backends are covered, from Greenhouse and Lever to Workday, Workable, Teamtailor, Taleo, and UKG. Pair these queries with the posted-within filter.
+1. The ATS Platforms section queries each backend directly. 16 backends are covered, from Greenhouse and Lever to Workday, Workable, Teamtailor, Taleo, and UKG. Pair these queries with the posted-within filter.
 2. The Company career sites field takes domains like `stripe.com, photoroom.com` and builds one query per site plus a combined one.
 3. The Target company field adds two queries: the company's own site with job boards subtracted, and a lookup for the company across hosted ATS boards, which finds the company's board even when you don't know its domain.
 
@@ -41,7 +53,7 @@ Note that Google's `after:` filter uses the date Google indexed a page, not the 
 |----------|----------|
 | Job Boards | LinkedIn, Indeed, Glassdoor, ZipRecruiter |
 | Tunisia Job Boards | TanitJobs, Option Carrière TN, Keejob (when location is Tunisia or preset is active) |
-| ATS Platforms | Greenhouse, Lever, Ashby, Workday, Workable, Eightfold, Teamtailor, Taleo, iCIMS, UKG |
+| ATS Platforms | Greenhouse, Lever, Ashby, Workday, Workable, Teamtailor, Taleo, iCIMS, UKG |
 | Remote Boards | We Work Remotely, Remote OK, Remotive |
 | Company Direct | Career pages without board noise, hiring announcements, per-domain queries, ATS board lookup |
 | Tech & Dev | Authentic Jobs, Arc.dev, HN "Who's Hiring" |
@@ -82,3 +94,7 @@ curl -X POST http://127.0.0.1:8000/api/cv/parse -F "cv=@resume.pdf"
 - Open the generated links in an incognito window for less personalized results.
 - The tool only builds queries. It does not scrape Google or any site.
 - Query length is capped and long queries get trimmed before they reach Google.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
