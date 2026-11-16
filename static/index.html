@@ -86,6 +86,7 @@
             <p class="field-hint preset-intro">Quick-start templates with role titles, skills, and niche job boards.</p>
             <div id="preset-grid" class="preset-grid" role="list"></div>
             <button type="button" class="link-btn preset-clear" id="preset-clear" hidden>Clear preset</button>
+            <p class="field-msg error-msg" id="preset-status" hidden role="status"></p>
             <input type="hidden" name="preset_id" id="preset-id" value="" />
           </div>
 
@@ -122,6 +123,7 @@
                 <select name="time_filter" id="time-filter">
                   <option value="">Any time</option>
                 </select>
+                <span class="field-msg error-msg" id="time-filter-status" hidden role="status"></span>
               </label>
               <label class="field">
                 <span class="field-label">Experience</span>
@@ -187,6 +189,7 @@
               <span class="ats-count" id="ats-count">All selected</span>
             </div>
             <p class="fieldset-hint">Company career pages run on these backends, where jobs show up here first.</p>
+            <p class="field-msg error-msg" id="ats-status" hidden role="status"></p>
             <div class="ats-actions">
               <button type="button" class="chip-btn" id="ats-select-all">Select all</button>
               <button type="button" class="chip-btn" id="ats-select-none">Clear</button>

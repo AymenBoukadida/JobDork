@@ -1,4 +1,10 @@
 import { KEYS, storageGet, storageSet } from "./js/storage.js";
+import {
+  buildPayload,
+  formatRequestError,
+  historyKey,
+  normalizeHistoryEntry,
+} from "./js/form-payload.js";
 import { showToast } from "./js/toast.js";
 
 const form = document.getElementById("dork-form");
@@ -30,11 +36,15 @@ const titleError = document.getElementById("title-error");
 const presetGrid = document.getElementById("preset-grid");
 const presetIdInput = document.getElementById("preset-id");
 const presetClearBtn = document.getElementById("preset-clear");
+const presetStatus = document.getElementById("preset-status");
 const timeFilterSelect = document.getElementById("time-filter");
+const timeFilterStatus = document.getElementById("time-filter-status");
+const atsStatus = document.getElementById("ats-status");
 
 let lastDorkResults = null;
 let allDorksFlat = [];
 let domainPresets = [];
+let isLoading = false;
 
 init();
 
@@ -47,33 +57,45 @@ function init() {
 }
 
 async function loadPresets() {
-  const res = await fetch("/api/presets");
-  if (!res.ok) return;
-  const data = await res.json();
-  domainPresets = data.presets || [];
-  presetGrid.innerHTML = domainPresets
-    .map(
-      (p) => `
+  try {
+    const res = await fetch("/api/presets");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(formatRequestError(res, data));
+    domainPresets = data.presets || [];
+    presetGrid.innerHTML = domainPresets
+      .map(
+        (p) => `
     <button type="button" class="preset-card" data-preset-id="${escapeHtml(p.id)}" title="${escapeHtml(p.description)}">
-      <span class="preset-icon">${p.icon}</span>
+      <span class="preset-icon" aria-hidden="true">${p.icon}</span>
       <span class="preset-name">${escapeHtml(p.name)}</span>
     </button>`
-    )
-    .join("");
-  presetGrid.querySelectorAll(".preset-card").forEach((btn) => {
-    btn.addEventListener("click", () => applyPreset(btn.dataset.presetId));
-  });
+      )
+      .join("");
+    presetGrid.querySelectorAll(".preset-card").forEach((btn) => {
+      btn.addEventListener("click", () => applyPreset(btn.dataset.presetId));
+    });
+    setStatus(presetStatus, "");
+  } catch (err) {
+    domainPresets = [];
+    presetGrid.innerHTML = "";
+    setStatus(presetStatus, `Presets unavailable. ${err.message}`);
+  }
 }
 
 async function loadTimeFilters() {
-  const res = await fetch("/api/time-filters");
-  if (!res.ok) return;
-  const data = await res.json();
-  for (const f of data.filters || []) {
-    const opt = document.createElement("option");
-    opt.value = f.id;
-    opt.textContent = f.label;
-    timeFilterSelect.appendChild(opt);
+  try {
+    const res = await fetch("/api/time-filters");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(formatRequestError(res, data));
+    for (const f of data.filters || []) {
+      const opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = f.label;
+      timeFilterSelect.appendChild(opt);
+    }
+    setStatus(timeFilterStatus, "");
+  } catch (err) {
+    setStatus(timeFilterStatus, `Time filters unavailable. ${err.message}`);
   }
 }
 
@@ -189,19 +211,26 @@ function setCvFile(file) {
 }
 
 async function loadAtsPlatforms() {
-  const res = await fetch("/api/ats-platforms");
-  if (!res.ok) return;
-  const data = await res.json();
-  atsContainer.innerHTML = (data.platforms || [])
-    .map(
-      (p) => `
+  try {
+    const res = await fetch("/api/ats-platforms");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(formatRequestError(res, data));
+    atsContainer.innerHTML = (data.platforms || [])
+      .map(
+        (p) => `
     <label class="ats-option">
       <input type="checkbox" name="ats" value="${escapeHtml(p.id)}" checked />
       <span>${escapeHtml(p.name)}</span>
     </label>`
-    )
-    .join("");
-  updateAtsCount();
+      )
+      .join("");
+    setStatus(atsStatus, "");
+    updateAtsCount();
+  } catch (err) {
+    atsContainer.innerHTML = "";
+    if (atsCount) atsCount.textContent = "Unavailable";
+    setStatus(atsStatus, `ATS platforms unavailable. ${err.message}`);
+  }
 }
 
 function updateAtsCount() {
@@ -213,28 +242,7 @@ function updateAtsCount() {
 }
 
 function getFormPayload() {
-  const data = new FormData(form);
-  const titlesRaw = data.get("titles")?.toString().trim() || "";
-  const skillsRaw = data.get("skills")?.toString().trim() || "";
-  const excludeRaw = data.get("exclude_terms")?.toString().trim() || "";
-  const domainsRaw = data.get("company_domains")?.toString().trim() || "";
-  const titles = titlesRaw ? titlesRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  return {
-    titles,
-    location: data.get("location")?.toString().trim() || "",
-    skills: skillsRaw ? skillsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [],
-    exclude_terms: excludeRaw ? excludeRaw.split(",").map((s) => s.trim()).filter(Boolean) : [],
-    company: data.get("company")?.toString().trim() || "",
-    company_domains: domainsRaw ? domainsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [],
-    remote: data.get("remote") === "on",
-    experience: data.get("experience")?.toString() || "",
-    company: data.get("company")?.toString().trim() || "",
-    keyword_mode: data.get("keyword_mode")?.toString() || "and",
-    title_mode: data.get("title_mode")?.toString() || "or",
-    time_filter: data.get("time_filter")?.toString() || "",
-    preset_id: data.get("preset_id")?.toString() || "",
-    ats_platforms: getSelectedAtsIds(),
-  };
+  return buildPayload(new FormData(form), getSelectedAtsIds());
 }
 
 function getSelectedAtsIds() {
@@ -273,6 +281,7 @@ function hideFieldError(el) {
 
 async function onSubmit(e) {
   e.preventDefault();
+  if (isLoading) return;
   const payload = getFormPayload();
   if (!validateForm(payload)) return;
 
@@ -287,20 +296,22 @@ async function generateDorks(payload) {
   try {
     const res = await fetch("/api/dorks", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to generate dorks");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(formatRequestError(res, data));
 
     lastDorkResults = data;
     renderDorkResults(data);
     showResultsPanel();
     resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
+    const message =
+      err?.name === "TypeError" ? formatRequestError({ status: 0 }, {}) : err.message;
     showResultsPanel();
     resultsError.hidden = false;
-    resultsError.textContent = err.message;
+    resultsError.textContent = message;
   } finally {
     setLoading(false);
   }
@@ -368,8 +379,13 @@ function dorkCard(dork, index) {
 
 function saveHistoryEntry(config) {
   const history = storageGet(KEYS.history, []) || [];
-  const entry = { ...config, id: Date.now(), ranAt: new Date().toISOString() };
-  const next = [entry, ...history.filter((h) => JSON.stringify(h) !== JSON.stringify(config))].slice(0, 20);
+  const key = historyKey(config);
+  const entry = {
+    ...normalizeHistoryEntry(config),
+    id: Date.now(),
+    ranAt: new Date().toISOString(),
+  };
+  const next = [entry, ...history.filter((h) => historyKey(h) !== key)].slice(0, 20);
   if (!storageSet(KEYS.history, next)) {
     showToast("Could not save past searches because browser storage is unavailable.", { type: "error" });
   }
@@ -408,36 +424,37 @@ function displayTitles(config) {
 }
 
 function applyConfigToForm(config) {
-  form.titles.value = (config.titles || (config.title ? [config.title] : [])).join(", ");
-  form.location.value = config.location || "";
-  form.skills.value = (config.skills || []).join(", ");
-  form.exclude_terms.value = (config.exclude_terms || []).join(", ");
-  form.company.value = config.company || "";
-  form.company_domains.value = (config.company_domains || []).join(", ");
-  form.experience.value = config.experience || "";
-  form.remote.checked = !!config.remote;
-  form.time_filter.value = config.time_filter || "";
-  presetIdInput.value = config.preset_id || "";
+  const entry = normalizeHistoryEntry(config);
+  form.titles.value = entry.titles.join(", ");
+  form.location.value = entry.location;
+  form.skills.value = entry.skills.join(", ");
+  form.exclude_terms.value = entry.exclude_terms.join(", ");
+  form.company.value = entry.company;
+  form.company_domains.value = entry.company_domains.join(", ");
+  form.experience.value = entry.experience;
+  form.remote.checked = entry.remote;
+  form.time_filter.value = entry.time_filter;
+  presetIdInput.value = entry.preset_id;
   presetGrid.querySelectorAll(".preset-card").forEach((el) => {
-    el.classList.toggle("active", el.dataset.presetId === config.preset_id);
+    el.classList.toggle("active", el.dataset.presetId === entry.preset_id);
   });
-  if (presetClearBtn) presetClearBtn.hidden = !config.preset_id;
+  if (presetClearBtn) presetClearBtn.hidden = !entry.preset_id;
 
-  const km = form.querySelector(`input[name="keyword_mode"][value="${config.keyword_mode || "and"}"]`);
+  const km = form.querySelector(`input[name="keyword_mode"][value="${entry.keyword_mode}"]`);
   if (km) km.checked = true;
-  const tm = form.querySelector(`input[name="title_mode"][value="${config.title_mode || "or"}"]`);
+  const tm = form.querySelector(`input[name="title_mode"][value="${entry.title_mode}"]`);
   if (tm) tm.checked = true;
 
-  if (config.ats_platforms === null) {
+  if (entry.ats_platforms === null) {
     setAllAts(true);
-  } else if (Array.isArray(config.ats_platforms)) {
+  } else {
     atsContainer.querySelectorAll('input[name="ats"]').forEach((el) => {
-      el.checked = config.ats_platforms.includes(el.value);
+      el.checked = entry.ats_platforms.includes(el.value);
     });
     updateAtsCount();
   }
 
-  if (config.exclude_terms?.length || config.company || config.company_domains?.length || config.remote) {
+  if (entry.exclude_terms.length || entry.company || entry.company_domains.length || entry.remote) {
     document.getElementById("advanced-details").open = true;
   }
 }
@@ -528,9 +545,20 @@ function showResultsPanel() {
 }
 
 function setLoading(loading) {
+  isLoading = loading;
   form.classList.toggle("loading", loading);
+  form.setAttribute("aria-busy", String(loading));
   submitBtn.disabled = loading;
   btnSpinner.hidden = !loading;
+  const label = submitBtn.querySelector(".btn-label");
+  if (label) label.textContent = loading ? "Generating…" : "Generate dorks";
+}
+
+function setStatus(el, message, type = "error") {
+  if (!el) return;
+  el.hidden = !message;
+  el.textContent = message;
+  el.className = message ? `field-msg ${type}-msg` : "field-msg";
 }
 
 async function copyAllQueries() {
