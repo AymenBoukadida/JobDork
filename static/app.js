@@ -13,6 +13,7 @@ const emptyState = document.getElementById("empty-state");
 const resultsEl = document.getElementById("results");
 const resultsMeta = document.getElementById("results-meta");
 const resultsWarnings = document.getElementById("results-warnings");
+const resultsStatus = document.getElementById("results-status");
 const copyAllBtn = document.getElementById("copy-all");
 const categoryNav = document.getElementById("category-nav");
 const atsContainer = document.getElementById("ats-platforms");
@@ -65,10 +66,13 @@ async function loadPresets() {
     presetGrid.innerHTML = domainPresets
       .map(
         (p) => `
-    <button type="button" class="preset-card" data-preset-id="${escapeHtml(p.id)}" title="${escapeHtml(p.description)}">
-      <span class="preset-icon" aria-hidden="true">${p.icon}</span>
-      <span class="preset-name">${escapeHtml(p.name)}</span>
-    </button>`
+    <div class="preset-item" role="listitem">
+      <button type="button" class="preset-card" data-preset-id="${escapeHtml(p.id)}" title="${escapeHtml(p.description)}">
+        <span class="preset-icon" aria-hidden="true">${p.icon}</span>
+        <span class="preset-name">${escapeHtml(p.name)}</span>
+        <span class="sr-only">${escapeHtml(p.description)}</span>
+      </button>
+    </div>`
       )
       .join("");
     presetGrid.querySelectorAll(".preset-card").forEach((btn) => {
@@ -134,10 +138,10 @@ function bindEvents() {
     tab.addEventListener("click", () => {
       modeTabs.forEach((t) => {
         t.classList.remove("active");
-        t.setAttribute("aria-selected", "false");
+        t.setAttribute("aria-pressed", "false");
       });
       tab.classList.add("active");
-      tab.setAttribute("aria-selected", "true");
+      tab.setAttribute("aria-pressed", "true");
       cvUploadPanel.hidden = tab.dataset.mode !== "cv";
     });
   });
@@ -162,6 +166,7 @@ function bindEvents() {
     if (e.key === "Escape" && !historyPanel.hidden) {
       historyPanel.hidden = true;
       historyToggle.setAttribute("aria-expanded", "false");
+      historyToggle.focus();
     }
   });
 
@@ -262,9 +267,11 @@ function setAllAts(checked) {
 function validateForm(payload) {
   if (!payload.titles?.length) {
     showFieldError(titleError, "At least one job title is required.");
+    form.titles.setAttribute("aria-invalid", "true");
     form.titles.focus();
     return false;
   }
+  form.titles.removeAttribute("aria-invalid");
   hideFieldError(titleError);
   return true;
 }
@@ -305,7 +312,12 @@ async function generateDorks(payload) {
     lastDorkResults = data;
     renderDorkResults(data);
     showResultsPanel();
-    resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    resultsStatus.textContent = `${data.total} queries generated.`;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    resultsPanel.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
   } catch (err) {
     const message =
       err?.name === "TypeError" ? formatRequestError({ status: 0 }, {}) : err.message;
@@ -335,16 +347,19 @@ function renderDorkResults(data) {
 
   categoryNav.hidden = false;
   categoryNav.innerHTML = data.categories
-    .map((cat) => `<a href="#cat-${cat.id}">${cat.icon} ${escapeHtml(cat.label)}</a>`)
+    .map(
+      (cat) =>
+        `<a href="#cat-${cat.id}"><span aria-hidden="true">${cat.icon}</span> ${escapeHtml(cat.label)}</a>`
+    )
     .join("");
 
   let idx = 0;
   resultsEl.innerHTML = data.categories
     .map(
       (cat) => `
-    <section class="category" id="cat-${cat.id}">
-      <h3 class="category-title">
-        ${cat.icon} ${escapeHtml(cat.label)}
+    <section class="category" id="cat-${cat.id}" aria-labelledby="cat-title-${cat.id}">
+      <h3 class="category-title" id="cat-title-${cat.id}">
+        <span aria-hidden="true">${cat.icon}</span> ${escapeHtml(cat.label)}
         <span class="category-count">${cat.dorks.length}</span>
       </h3>
       ${cat.dorks.map((d) => dorkCard(d, idx++)).join("")}
@@ -362,17 +377,18 @@ function renderDorkResults(data) {
 
 function dorkCard(dork, index) {
   const warn = dork.query_warning
-    ? `<p class="dork-warn" role="status">${escapeHtml(dork.query_warning)}</p>`
+    ? `<p class="dork-warn">${escapeHtml(dork.query_warning)}</p>`
     : "";
+  const label = escapeHtml(dork.label);
   return `
     <article class="dork-card">
-      <div class="dork-label">${escapeHtml(dork.label)}</div>
+      <div class="dork-label">${label}</div>
       <p class="dork-desc">${escapeHtml(dork.description)}</p>
       ${warn}
       <div class="dork-query">${escapeHtml(dork.query)}</div>
       <div class="dork-actions">
-        <button type="button" class="btn-icon" data-dork-index="${index}">Copy</button>
-        <a href="${dork.google_url}" target="_blank" rel="noopener noreferrer" class="btn-icon open-google">Open in Google</a>
+        <button type="button" class="btn-icon" data-dork-index="${index}" aria-label="Copy ${label} query">Copy</button>
+        <a href="${dork.google_url}" target="_blank" rel="noopener noreferrer" class="btn-icon open-google" aria-label="Open ${label} in Google">Open in Google</a>
       </div>
     </article>`;
 }
@@ -503,11 +519,11 @@ async function parseCv() {
       : "Extracted text. Please set a job title manually.";
     modeTabs.forEach((t) => {
       t.classList.remove("active");
-      t.setAttribute("aria-selected", "false");
+      t.setAttribute("aria-pressed", "false");
     });
     const manual = document.querySelector('.input-mode-tabs .tab[data-mode="manual"]');
     manual?.classList.add("active");
-    manual?.setAttribute("aria-selected", "true");
+    manual?.setAttribute("aria-pressed", "true");
     cvUploadPanel.hidden = true;
     form.titles.focus();
   } catch (err) {
@@ -535,6 +551,8 @@ function clearResultsUi() {
   resultsMeta.textContent = "";
   resultsWarnings.hidden = true;
   resultsError.hidden = true;
+  resultsError.textContent = "";
+  resultsStatus.textContent = "";
   categoryNav.hidden = true;
   categoryNav.innerHTML = "";
 }
