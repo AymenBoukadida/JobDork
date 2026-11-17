@@ -6,6 +6,9 @@ AGGREGATOR_DOMAINS: tuple[str, ...] = (
     "linkedin.com",
     "indeed.com",
     "glassdoor.com",
+    "glassdoor.co.uk",
+    "glassdoor.de",
+    "glassdoor.sg",
     "ziprecruiter.com",
     "monster.com",
     "dice.com",
@@ -15,11 +18,16 @@ AGGREGATOR_DOMAINS: tuple[str, ...] = (
     "adzuna.com",
     "talent.com",
     "neuvoo.com",
+    "facebook.com",
+    "instagram.com",
 )
 
-CAREER_PATH_FILTER = (
-    "(inurl:careers OR inurl:jobs OR inurl:join-us OR inurl:work-with-us)"
-)
+# Google returns zero results for inurl:a OR inurl:b, with or without
+# parentheses, so each path filter must be a single operator. The plural forms
+# are the real path segments: "career"/"job" also match /career-advice and
+# /job-search pages, which buried the listings.
+CAREER_PATH_FILTER = "inurl:careers"
+JOB_PATH_FILTER = "inurl:jobs"
 
 HIRING_PHRASES = (
     '("we are hiring" OR "we\'re hiring" OR "now hiring" OR "join our team")'
