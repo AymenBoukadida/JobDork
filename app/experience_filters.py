@@ -15,6 +15,16 @@ ZERO_EXP_POSITIVE = (
     'OR "0 years" OR "fresh graduate" OR "recent graduate" OR "new graduate" OR trainee)'
 )
 
+TUNISIA_ENTRY_POSITIVE = (
+    '("entry level" OR junior OR débutant OR "jeune diplômé" OR "0-2 ans" '
+    "OR SIVP OR PFE)"
+)
+
+TUNISIA_ZERO_EXP_POSITIVE = (
+    '("jeune diplômé" OR débutant OR "0-2 ans" OR "sans expérience" '
+    'OR SIVP OR PFE OR "no experience required")'
+)
+
 ZERO_EXP_EXCLUDE_TOKENS = (
     '-"5 years"',
     '-"5+ years"',
@@ -79,11 +89,15 @@ def is_entry_level(experience: str) -> bool:
     return normalize_experience(experience) == ENTRY_LEVEL
 
 
-def experience_clause(experience: str) -> str:
+def experience_clause(experience: str, *, tunisia: bool = False) -> str:
     normalized = normalize_experience(experience)
     if is_no_experience(normalized):
+        if tunisia:
+            return TUNISIA_ZERO_EXP_POSITIVE
         return ZERO_EXP_POSITIVE
     if normalized:
+        if tunisia and is_entry_level(normalized):
+            return TUNISIA_ENTRY_POSITIVE
         return _EXPERIENCE_CLAUSES.get(normalized, google_quoted(normalized))
     return ""
 

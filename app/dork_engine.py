@@ -12,11 +12,12 @@ from app.career_pages import (
     sanitize_company_domain,
 )
 from app.experience_filters import (
+    ENTRY_LEVEL,
+    NO_EXPERIENCE,
     experience_clause,
     experience_exclude_tokens,
     normalize_experience,
     zero_experience_exclude_tokens,
-    ZERO_EXP_POSITIVE,
 )
 from app.domain_presets import get_domain_preset
 from app.query_builder import (
@@ -195,7 +196,7 @@ def _title_only_clause(params: SearchParams) -> str:
 
 def _title_clause(params: SearchParams) -> str:
     parts = [_title_only_clause(params)]
-    exp = experience_clause(params.experience)
+    exp = experience_clause(params.experience, tunisia=_is_tunisia_context(params))
     if exp:
         parts.append(exp)
     return join_query_parts(parts)
@@ -236,13 +237,17 @@ def _exclude_clause(params: SearchParams) -> str:
     return join_query_parts(terms)
 
 
-def _include_tunisia_boards(params: SearchParams) -> bool:
+def _is_tunisia_context(params: SearchParams) -> bool:
     if params.preset_id == "tunisia":
         return True
     if not params.location:
         return False
     loc = params.location.lower()
     return any(hint in loc for hint in TUNISIA_LOCATION_HINTS)
+
+
+def _include_tunisia_boards(params: SearchParams) -> bool:
+    return _is_tunisia_context(params)
 
 
 def _core_terms(params: SearchParams) -> str:
@@ -376,10 +381,37 @@ def _tunisia_job_board_dorks(params: SearchParams) -> list[DorkQuery]:
             "tunisieannonce",
         ),
     ]
-    return [
+    dorks = [
         _make_dork("tunisia", name, params, site, desc, platform_id=pid)
         for name, site, desc, pid in boards
     ]
+
+    if normalize_experience(params.experience) in (ENTRY_LEVEL, NO_EXPERIENCE):
+        entry_core = join_query_parts(
+            [
+                _title_only_clause(params),
+                _location_clause(params),
+                '("stage" OR PFE OR SIVP OR "jeune diplômé")',
+            ]
+        )
+        entry_protected = join_query_parts(
+            [
+                "(site:tanitjobs.com OR site:keejob.com)",
+                _exclude_clause(params),
+            ]
+        )
+        dorks.append(
+            _make_dork_parts(
+                "tunisia",
+                "Stage / PFE / SIVP",
+                entry_core,
+                entry_protected,
+                "Internships, final-year projects (PFE), and SIVP first-job contracts",
+                platform_id="tunisia_entry",
+            )
+        )
+
+    return dorks
 
 
 def _ats_dorks(params: SearchParams) -> list[DorkQuery]:
@@ -575,11 +607,14 @@ def _advanced_dorks(params: SearchParams) -> list[DorkQuery]:
             join_query_parts(zero_experience_exclude_tokens()),
         ]
     )
+    zero_exp_positive = experience_clause(
+        NO_EXPERIENCE, tunisia=_is_tunisia_context(params)
+    )
 
     specs = [
         (
             "Zero Experience (0 yrs)",
-            join_query_parts([title_only, ZERO_EXP_POSITIVE, tail_core]),
+            join_query_parts([title_only, zero_exp_positive, tail_core]),
             zero_exp_protected,
             "Roles that explicitly require no prior experience; excludes common year minimums",
             "zero_experience",
