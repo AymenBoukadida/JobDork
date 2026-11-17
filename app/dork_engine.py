@@ -8,6 +8,7 @@ from app.career_pages import (
     ATS_BOARD_SITES,
     CAREER_PATH_FILTER,
     HIRING_PHRASES,
+    JOB_PATH_FILTER,
     aggregator_exclude_clause,
     sanitize_company_domain,
 )
@@ -476,9 +477,19 @@ def _company_direct_dorks(params: SearchParams) -> list[DorkQuery]:
                     "company",
                     f"{domain} careers",
                     params,
-                    f"site:{domain} (inurl:careers OR inurl:jobs OR inurl:job)",
-                    f"Job listings on {domain} only",
+                    f"site:{domain} {CAREER_PATH_FILTER}",
+                    f"Career pages on {domain} only",
                     platform_id=f"domain_{domain.replace('.', '_')}",
+                )
+            )
+            dorks.append(
+                _make_dork(
+                    "company",
+                    f"{domain} jobs",
+                    params,
+                    f"site:{domain} {JOB_PATH_FILTER}",
+                    f"Job listings on {domain} only",
+                    platform_id=f"domainjobs_{domain.replace('.', '_')}",
                 )
             )
         if len(params.company_domains) > 1:
@@ -503,8 +514,18 @@ def _company_direct_dorks(params: SearchParams) -> list[DorkQuery]:
                 f"{params.company} on its own site",
                 params,
                 join_query_parts([CAREER_PATH_FILTER, board_excludes]),
-                f"{params.company} postings on its own site, with job boards excluded",
+                f"{params.company} career pages, with job boards excluded",
                 platform_id="company_site",
+            )
+        )
+        dorks.append(
+            _make_dork(
+                "company",
+                f"{params.company} jobs on its own site",
+                params,
+                join_query_parts([JOB_PATH_FILTER, board_excludes]),
+                f"{params.company} job listings, with job boards excluded",
+                platform_id="company_site_jobs",
             )
         )
         ats_sites = " OR ".join(ATS_BOARD_SITES)
@@ -525,9 +546,17 @@ def _company_direct_dorks(params: SearchParams) -> list[DorkQuery]:
                 "company",
                 "Career pages only (no job boards)",
                 params,
-                join_query_parts([CAREER_PATH_FILTER, '"apply"', board_excludes]),
-                "Employer career-site postings with aggregator boards subtracted",
+                join_query_parts([CAREER_PATH_FILTER, board_excludes]),
+                "Employer /careers pages with aggregator boards subtracted",
                 platform_id="careers_pages",
+            ),
+            _make_dork(
+                "company",
+                "Career pages (/jobs)",
+                params,
+                join_query_parts([JOB_PATH_FILTER, board_excludes]),
+                "Employer /jobs pages with aggregator boards subtracted",
+                platform_id="careers_jobs",
             ),
             _make_dork(
                 "company",
@@ -541,7 +570,7 @@ def _company_direct_dorks(params: SearchParams) -> list[DorkQuery]:
                 "company",
                 "Job Postings (PDF)",
                 params,
-                "filetype:pdf (intitle:job OR intitle:position OR intitle:opening)",
+                "filetype:pdf intitle:job",
                 "Job descriptions shared as PDFs",
                 platform_id="pdf_jobs",
             ),

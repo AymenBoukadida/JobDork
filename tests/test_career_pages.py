@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from app.ats_platforms import ATS_PLATFORMS, resolve_ats_platforms
@@ -33,10 +35,54 @@ def test_career_pages_dork_excludes_job_boards():
     dorks = _company_dorks(SearchParams(title="Software Engineer"))
     careers = next(d for d in dorks if d["platform_id"] == "careers_pages")
     query = careers["query"]
-    assert "inurl:careers" in query
+    assert "inurl:career" in query
+    assert "inurl:careers OR" not in query
+    assert '"apply"' not in query
     assert "-site:linkedin.com" in query
     assert "-site:indeed.com" in query
     assert aggregator_exclude_clause().split()  # clause is non-empty
+
+
+def test_jobs_path_dork_is_separate_from_career_path():
+    dorks = _company_dorks(SearchParams(title="Software Engineer"))
+    careers = next(d for d in dorks if d["platform_id"] == "careers_pages")
+    jobs = next(d for d in dorks if d["platform_id"] == "careers_jobs")
+    assert "inurl:career" in careers["query"]
+    assert "inurl:job" in jobs["query"]
+    assert jobs["query"] != careers["query"]
+
+
+def test_no_query_ors_two_operators():
+    result = generate_dorks(
+        SearchParams(
+            titles=["Backend Developer", "Platform Engineer"],
+            location="Berlin",
+            skills=["Python", "AWS"],
+            company="Stripe",
+            company_domains=["stripe.com", "monzo.com"],
+            experience="entry level",
+            preset_id="tunisia",
+            time_filter="30d",
+        )
+    )
+    operator_or = re.compile(
+        r"\b(?:inurl|intitle):[^\s()\"]*\s+OR\s+(?:inurl|intitle):", re.IGNORECASE
+    )
+    offenders = [
+        (category["id"], dork["label"], dork["query"])
+        for category in result["categories"]
+        for dork in category["dorks"]
+        if operator_or.search(dork["query"])
+    ]
+    assert offenders == []
+
+
+def test_pdf_dork_uses_a_single_intitle_operator():
+    dorks = _company_dorks(SearchParams(title="Software Engineer"))
+    pdf = next(d for d in dorks if d["platform_id"] == "pdf_jobs")
+    assert "filetype:pdf" in pdf["query"]
+    assert "intitle:job" in pdf["query"]
+    assert "intitle:job OR" not in pdf["query"]
 
 
 def test_hiring_announcements_dork_present():
@@ -50,7 +96,7 @@ def test_company_name_gets_own_site_and_ats_lookup_dorks():
     dorks = _company_dorks(SearchParams(title="Software Engineer", company="Stripe"))
     own_site = next(d for d in dorks if d["platform_id"] == "company_site")
     assert '"Stripe"' in own_site["query"]
-    assert "inurl:careers" in own_site["query"]
+    assert "inurl:career" in own_site["query"]
     assert "-site:linkedin.com" in own_site["query"]
     ats_lookup = next(d for d in dorks if d["platform_id"] == "company_ats")
     assert "site:jobs.lever.co" in ats_lookup["query"]
