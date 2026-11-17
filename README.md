@@ -29,7 +29,7 @@ It is a query generator, not a scraper. It never fetches Google or any job site 
 
 ## Features
 
-- **41 queries from a single title** — 6 job boards, 16 ATS backends, 6 remote boards, 4 company-direct angles, 4 tech sources, and 5 advanced patterns. A company name, target domains, or a preset adds more.
+- **42 queries from a single title** — 6 job boards, 16 ATS backends, 6 remote boards, 5 company-direct angles, 4 tech sources, and 5 advanced patterns. A company name, target domains, or a preset adds more.
 - **ATS-first coverage** — Greenhouse, Lever, Ashby, Workday, SmartRecruiters, BambooHR, iCIMS, Jobvite, Workable, Teamtailor, Recruitee, Pinpoint, Breezy HR, JazzHR, Taleo, and UKG Pro.
 - **Company targeting** — pass `stripe.com, monzo.com` and get one query per domain plus a combined one; pass a company name and get its own site (with boards subtracted) and its hosted ATS board.
 - **16 domain presets** — cybersecurity, data, DevOps, frontend, backend, mobile, product, healthcare, finance, legal, sysadmin, IT support, network, cloud/M365, general IT, and Tunisia.
@@ -99,7 +99,7 @@ A real generated query, entry-level in Tunisia:
 | Job Boards | LinkedIn, Indeed, Glassdoor, ZipRecruiter, Monster, Dice |
 | ATS Platforms | Greenhouse, Lever, Ashby, Workday, SmartRecruiters, BambooHR, iCIMS, Jobvite, Workable, Teamtailor, Recruitee, Pinpoint, Breezy HR, JazzHR, Taleo, UKG Pro |
 | Remote Boards | We Work Remotely, Remote OK, Remotive, FlexJobs, Remote.co, Working Nomads |
-| Company Direct | Career pages without board noise, hiring announcements, per-domain queries, ATS board lookup, PDF postings, Wellfound/AngelList startup boards |
+| Company Direct | `/careers` pages, `/jobs` pages, hiring announcements, per-domain career and job queries, ATS board lookup, PDF postings, Wellfound/AngelList startup boards |
 | Tech & Dev | Authentic Jobs, Arc.dev, GitHub hiring posts, Hacker News "Who's Hiring" |
 | Advanced | Zero-experience roles, exact title match, recent postings, salary mentions, no-recruiter filter |
 | Tunisia | TanitJobs, Option Carrière TN, Keejob, Indeed Tunisia, Tunisie Annonce, LinkedIn Tunisia, `.tn` sites |
@@ -318,6 +318,8 @@ The app is stateless and runs anywhere that can serve a Python 3.12 process:
 
 ## Limitations
 
+- Google does not support `OR` between `inurl:` or `intitle:` operators. `(inurl:careers OR inurl:jobs)` returns **zero** results, with or without parentheses. The engine emits one dork per path instead: `inurl:careers` and `inurl:jobs`.
+- Google may quietly relax a dork that is overloaded with operators, dropping filters and returning unrelated pages. If results look off-target, shorten the query: fewer exclusions, fewer skills, one title at a time.
 - Google's `after:` operator filters on the page's index date, not the real posting date. Treat recency as approximate.
 - Result counts vary by region, personalization, and Google's own throttling. Open links in a private window for cleaner results.
 - The Tunisia preset is built around French-language postings; Arabic-language boards are only partially covered.
