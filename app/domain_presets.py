@@ -386,7 +386,9 @@ DOMAIN_PRESETS: tuple[DomainPreset, ...] = (
             "Consultant",
         ),
         ("Java", "PHP", "SQL", "Anglais", "Réseau"),
-        ("stage", "formation", "PFE"),
+        # Keep training ads out by title; plain "stage"/"PFE" exclusions would
+        # hide the main entry-level channel in Tunisia.
+        ("-intitle:formation",),
         (
             NicheBoard(
                 "LinkedIn (Tunisia)",
